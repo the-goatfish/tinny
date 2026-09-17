@@ -1,0 +1,12 @@
+[tools]
+git-cliff = "2"
+
+[settings]
+# Tell mise to automatically read rust-toolchain.toml for this project. We do it
+# this way so anyone should be able to use rustup or mise and get the right version.
+# But if they use mise, they also get `git-cliff`, used for automated versioning.
+idiomatic_version_file = true
+
+# For cargo packaging, create a file named mise.local.toml with the following content
+# [env]
+# CARGO_REGISTRY_TOKEN = "secret"

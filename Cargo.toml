@@ -1,0 +1,69 @@
+[package]
+name = "tinny"
+version = "0.0.0"
+description = "A toolkit to manage bare-metal (tin) computers."
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/the-goatfish/tinny"
+documentation = "https://docs.rs/tinny"
+homepage = "https://the-goatfish.github.io/tinny/"
+readme = "README.md"
+# keywords = []
+# categories = []
+include = [
+    # automatically included even if we don't list them
+    "README.md",
+    "LICENSE",
+    "Cargo.toml",
+    # also automatically included, but only used to install binary crates
+    "Cargo.lock",
+    # then the things we actually need to include:
+    # "CHANGELOG.md",
+    "src/**/*.rs",
+    "build.rs",
+]
+
+[dependencies]
+clap = { version = "4", features = ["derive", "cargo", "wrap_help"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+jsonptr = "0.8"
+anyhow = "1"
+zeroize = "1"
+secrecy = "0.10"
+inquire = "0.9"
+aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
+argon2 = "0.6"
+password-hash = "0.5.0"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+assert_fs = "1"
+
+[build-dependencies]
+serde_json = { workspace = true }
+semver = "1"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[workspace.metadata.dist]
+cargo-dist-version = "0.31.0"
+ci = ["github"]
+installers = []
+targets = [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+]
+
+[workspace]
+members = [
+    ".",
+]
+
+[workspace.dependencies]
+serde_json = "1.0"
