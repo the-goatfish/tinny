@@ -1012,8 +1012,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinny"
-version = "0.0.0"
+name = "tinny-testing"
+version = "0.0.1-pre.1"
 dependencies = [
  "anyhow",
  "argon2",
