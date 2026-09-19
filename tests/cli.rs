@@ -4,7 +4,7 @@ use assert_fs::fixture::PathChild;
 use predicates::prelude::*;
 use secrecy::ExposeSecret;
 use serde_json::Value;
-use tinny::{Can, SecretBytes};
+use tinny_testing::{Can, SecretBytes};
 
 fn setup_can_with_secret(temp: &TempDir, pointer: &str, secret: &[u8], pass: &[u8]) {
     let can_path = temp.child("can.json");
