@@ -3,7 +3,7 @@ name: Release-plz
 on:
   push:
     branches:
-      - main
+      - crate-testing
 
 jobs:
   # Only requests the approval-gated release job when there's actually a
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-pending-release
     if: needs.check-pending-release.outputs.pending == 'true'
-    environment: crates-io-publish
+    environment: crates-io-publish-testing
     permissions:
       contents: write      # push tags, create releases
       pull-requests: read  # detect the release PR and its commits

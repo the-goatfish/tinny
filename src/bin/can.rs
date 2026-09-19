@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use anyhow::Result;
 use clap::Parser;
 use secrecy::ExposeSecret;
-use tinny::{Actions, Can, Cli, prompt_passphrase, read_secret};
+use tinny_testing::{Actions, Can, Cli, prompt_passphrase, read_secret};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
