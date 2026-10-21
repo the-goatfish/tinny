@@ -1,0 +1,27 @@
+name: Setup Rust
+description: Install the Rust toolchain and configure caching
+
+inputs:
+  target:
+    description: Additional Rust target to install
+    required: false
+    default: ''
+  cache-key:
+    description: Extra key for Swatinem/rust-cache
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      shell: bash
+      run: |
+        rustup toolchain install
+        if [ -n "${{ inputs.target }}" ]; then
+          rustup target add ${{ inputs.target }}
+        fi
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}

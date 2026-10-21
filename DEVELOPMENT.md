@@ -3,6 +3,33 @@
 This document describes aspects of the project relevant to developers of Tinny
 itself.
 
+## Running CI checks locally
+
+Every check `.github/workflows/build.yaml` runs can also be run locally:
+
+```sh
+# lint
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+
+# test and docs
+cargo test --all-targets --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+
+# dependency/license audit — requires: cargo install cargo-deny
+cargo deny check
+
+# breaking public-API changes vs. the last published release — requires: cargo install cargo-semver-checks
+cargo semver-checks check-release
+
+# publish dry-run
+cargo publish --dry-run --all-features
+
+# per-target tests from the release matrix (only needed if touching target-specific code)
+cargo test --target x86_64-unknown-linux-musl --all-targets --all-features   # needs: rustup target add x86_64-unknown-linux-musl, musl-tools
+cross test --target aarch64-unknown-linux-gnu --all-targets --all-features    # needs: Docker, cross (https://github.com/cross-rs/cross)
+```
+
 ## Versioning
 
 This project contains a number of different parts, and therefore the versioning
