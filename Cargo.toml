@@ -18,7 +18,7 @@ include = [
     # also automatically included, but only used to install binary crates
     "Cargo.lock",
     # then the things we actually need to include:
-    # "CHANGELOG.md",
+    "CHANGELOG.md",
     "src/**/*.rs",
     "build.rs",
 ]
@@ -49,16 +49,16 @@ semver = "1"
 inherits = "release"
 lto = "thin"
 
+# Config for 'dist'
 [workspace.metadata.dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.31.0"
-ci = ["github"]
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
 installers = []
-targets = [
-    "aarch64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-musl",
-]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
 
 [workspace]
 members = [
