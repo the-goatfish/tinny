@@ -1,0 +1,22 @@
+[workspace]
+# Reuse the existing git-cliff config (the same file build.rs shells out to)
+# as the single source of truth for bump policy + commit parsing, instead of
+# duplicating it into this file's own [changelog] table and risking drift.
+# (changelog_config is deprecated upstream but still functional — accepted
+# trade-off to avoid two configs disagreeing with each other.)
+changelog_config = "cliff.toml"
+
+# cargo-dist's generated workflow owns the GitHub Release (binaries,
+# checksums, install scripts on the same vX.Y.Z tag) — disable release-plz's
+# own Release creation to avoid two competing Release objects on one tag.
+git_release_enable = false
+
+# The real `cargo publish` call stays enabled; gated at the job level via
+# the `crates-io-publish` GitHub Environment (see release-plz.yml), not
+# disabled here.
+publish = true
+
+# Match `cargo publish --dry-run --all-features` already used by
+# build.yaml's publish-check job, so dry-run and real publish validate the
+# same thing.
+publish_all_features = true
