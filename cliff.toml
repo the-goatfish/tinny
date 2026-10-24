@@ -5,6 +5,22 @@
 features_always_bump_minor = false
 breaking_always_bump_major = false
 
+[remote.github]
+# Needed for the plain `git-cliff` CLI (e.g. build.rs's subprocess call, or
+# running `git-cliff` by hand), which expects `remote.github.owner`/`repo`.
+# Without this, rendering fails outright ("Variable `remote.github.owner`
+# not found"). `token` is intentionally omitted; it's picked up from the
+# GITHUB_TOKEN environment variable when running in CI.
+#
+# release-plz's EMBEDDED git-cliff (via changelog_config below) is a
+# different consumer of this same template and exposes a different,
+# unnamespaced shape instead: `remote.owner`/`remote.repo` (no `.github`).
+# The templates below branch on `remote.github is defined` to support both
+# shapes from the one file — confirmed by testing against both directly;
+# neither consumer's shape is a superset of the other's.
+owner = "the-goatfish"
+repo = "tinny"
+
 [changelog]
 # template for the changelog header
 header = """
@@ -14,7 +30,7 @@ All notable changes to this project will be documented in this file.\n
 # template for the changelog body
 # https://keats.github.io/tera/docs/#introduction
 body = """
-{%- macro category(title, cat_commits) -%}
+{%- macro category(title, cat_commits, gh_owner, gh_repo) -%}
     {%- if cat_commits | length > 0 %}
 
 ### {{ title }}
@@ -32,14 +48,21 @@ body = """
 - *({{ scope }})*
             {%- set scope_group = cat_commits | filter(attribute="scope", value=scope) -%}
             {%- for commit in scope_group %}
-{{ "  " }}- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | split(pat="\n") | first | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/commit/{{ commit.id }}))
+{{ "  " }}- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | split(pat="\n") | first | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/{{ gh_owner }}/{{ gh_repo }}/commit/{{ commit.id }}))
             {%- endfor -%}
         {%- endfor -%}
         {%- for commit in unscoped_commits %}
-- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | split(pat="\n") | first | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/commit/{{ commit.id }}))
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | split(pat="\n") | first | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/{{ gh_owner }}/{{ gh_repo }}/commit/{{ commit.id }}))
         {%- endfor -%}
     {%- endif -%}
 {%- endmacro category -%}
+{%- if remote.github is defined -%}
+    {%- set gh_owner = remote.github.owner -%}
+    {%- set gh_repo = remote.github.repo -%}
+{%- else -%}
+    {%- set gh_owner = remote.owner -%}
+    {%- set gh_repo = remote.repo -%}
+{%- endif -%}
 {% if version %}\
     ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
@@ -59,11 +82,11 @@ body = """
 {%- set ci_commits = commits | filter(attribute="group", value="Continuous Integration") -%}
 {%- set style_commits = commits | filter(attribute="group", value="Styling") -%}
 {%- set chore_group_commits = chore_commits | concat(with=test_commits) | concat(with=ci_commits) | concat(with=style_commits) -%}
-{{- self::category(title="Breaking Changes", cat_commits=breaking_commits) -}}
-{{- self::category(title="Functional", cat_commits=functional_commits) -}}
-{{- self::category(title="Behavioural", cat_commits=behavioural_commits) -}}
-{{- self::category(title="Documentation", cat_commits=doc_commits) -}}
-{{- self::category(title="Chore", cat_commits=chore_group_commits) -}}
+{{- self::category(title="Breaking Changes", cat_commits=breaking_commits, gh_owner=gh_owner, gh_repo=gh_repo) -}}
+{{- self::category(title="Functional", cat_commits=functional_commits, gh_owner=gh_owner, gh_repo=gh_repo) -}}
+{{- self::category(title="Behavioural", cat_commits=behavioural_commits, gh_owner=gh_owner, gh_repo=gh_repo) -}}
+{{- self::category(title="Documentation", cat_commits=doc_commits, gh_owner=gh_owner, gh_repo=gh_repo) -}}
+{{- self::category(title="Chore", cat_commits=chore_group_commits, gh_owner=gh_owner, gh_repo=gh_repo) -}}
 """
 # template for the changelog footer
 footer = """
@@ -79,7 +102,7 @@ split_commits = false
 # regex for preprocessing the commit messages
 commit_preprocessors = [
     # Replace issue numbers
-    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/issues/${2}))" },
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}]({% if remote.github is defined %}https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}{% else %}https://github.com/{{ remote.owner }}/{{ remote.repo }}{% endif %}/issues/${2}))" },
 ]
 # regex for parsing and grouping commits
 commit_parsers = [
