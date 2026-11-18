@@ -1,0 +1,9 @@
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      # GitHub's self-repository syntax (`uses: $/...`, July 2026), which
+      # actionlint 1.7.12 predates. It loads in-repo actions and workflows from
+      # the running workflow's own commit, whatever the workspace holds, which
+      # release.yml relies on.
+      - 'specifying action "\$/[^"]+" in invalid format because ref is missing'
+      - 'reusable workflow call "\$/[^"]+" at "uses" is not following the format'

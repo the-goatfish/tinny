@@ -6,18 +6,16 @@ features_always_bump_minor = false
 breaking_always_bump_major = false
 
 [remote.github]
-# Needed for the plain `git-cliff` CLI (e.g. build.rs's subprocess call, or
-# running `git-cliff` by hand), which expects `remote.github.owner`/`repo`.
+# Needed by the templates below, which expect `remote.github.owner`/`repo`.
 # Without this, rendering fails outright ("Variable `remote.github.owner`
 # not found"). `token` is intentionally omitted; it's picked up from the
-# GITHUB_TOKEN environment variable when running in CI.
+# GITHUB_TOKEN environment variable when set. scripts/prepare-release.sh runs
+# git-cliff `--offline` anyway, since the templates need nothing from the
+# GitHub API.
 #
-# release-plz's EMBEDDED git-cliff (via changelog_config below) is a
-# different consumer of this same template and exposes a different,
-# unnamespaced shape instead: `remote.owner`/`remote.repo` (no `.github`).
-# The templates below branch on `remote.github is defined` to support both
-# shapes from the one file — confirmed by testing against both directly;
-# neither consumer's shape is a superset of the other's.
+# The templates also accept an unnamespaced `remote.owner`/`remote.repo`
+# shape (via `remote.github is defined`), left over from when release-plz's
+# embedded git-cliff also rendered them. It's harmless to keep.
 owner = "the-goatfish"
 repo = "tinny"
 
@@ -106,6 +104,12 @@ commit_preprocessors = [
 ]
 # regex for parsing and grouping commits
 commit_parsers = [
+    # The release commit made by scripts/prepare-release.sh. It belongs to the
+    # version it tags, but it would be noise in that version's own notes.
+    { message = "^chore\\(release\\): ", skip = true },
+    # History is linear from now on (release.yml rebases), but older merge
+    # commits aren't conventional and would otherwise warn on every run.
+    { message = "^Merge pull request ", skip = true },
     { field = "breaking", pattern = "true", group = "Breaking Changes" },
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Bug Fixes" },

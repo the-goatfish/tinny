@@ -1,5 +1,10 @@
 [tools]
-git-cliff = "2"
+git-cliff = "2.14.2"
+cargo-deny = "0.20.2"
+"github:obi1kenobi/cargo-semver-checks" = "0.51.0"
+actionlint = "1.7.12"
+zizmor = "1.31.1"
+shellcheck = "0.11.0"
 
 [settings]
 # Tell mise to automatically read rust-toolchain.toml for this project. We do it
@@ -7,6 +12,84 @@ git-cliff = "2"
 # But if they use mise, they also get `git-cliff`, used for automated versioning.
 idiomatic_version_file = true
 
-# For cargo packaging, create a file named mise.local.toml with the following content
-# [env]
-# CARGO_REGISTRY_TOKEN = "secret"
+# Every CI check is one of the tasks below, and CI runs them with `mise run`, so
+# what passes here passes there. `mise run ci` runs them all, cheapest first;
+# `mise run ci:release-preview` runs them against the commit a release would
+# create. See DEVELOPMENT.md.
+
+[tasks.prepare]
+description = "Rebase onto base, bump version, write changelog and tag, in target/release-preview"
+run = "scripts/prepare-release.sh"
+
+[tasks.workflow-lint]
+description = "Lint GitHub workflows and actions"
+# zizmor's online audits (e.g. known-vulnerable actions) need a GitHub token.
+run = [
+    "actionlint",
+    'zizmor --quiet --persona pedantic $([ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ] || echo --offline) .github',
+]
+
+[tasks.shellcheck]
+description = "Lint shell scripts"
+run = "shellcheck scripts/*.sh"
+
+[tasks.fmt]
+description = "Check formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks.deny]
+description = "Audit dependencies and licenses"
+run = "cargo deny --locked check"
+
+[tasks.clippy]
+description = "Lint Rust code"
+run = "cargo clippy --locked --all-targets --all-features -- -D warnings"
+
+[tasks.lint]
+description = "All checks that need no build, then clippy"
+run = [
+    { task = "workflow-lint" },
+    { task = "shellcheck" },
+    { task = "fmt" },
+    { task = "deny" },
+    { task = "clippy" },
+]
+
+[tasks.test]
+description = "Run tests"
+run = "cargo test --locked --all-targets --all-features"
+
+[tasks.docs]
+description = "Build docs, denying warnings"
+env = { RUSTDOCFLAGS = "-D warnings" }
+run = "cargo doc --locked --no-deps --all-features"
+
+[tasks.semver]
+description = "Check the version bump covers public-API changes since the last published release"
+run = "cargo semver-checks --all-features"
+
+[tasks.publish-dry-run]
+description = "Check the crate packages and builds as crates.io would"
+run = "cargo publish --locked --dry-run --all-features"
+
+[tasks.package]
+description = "Test, build and archive the release binary for a target (default: host)"
+run = "scripts/package.sh"
+
+[tasks.ci]
+description = "Run every CI check, cheapest first, stopping at the first failure"
+run = [
+    { task = "lint" },
+    { task = "test" },
+    { task = "docs" },
+    { task = "semver" },
+    { task = "publish-dry-run" },
+    { task = "package" },
+]
+
+[tasks."ci:release-preview"]
+description = "Run every CI check against the commit a release of this branch would create"
+run = [
+    { task = "prepare" },
+    "cd target/release-preview/repo && EXPECT_VERSION=\"$(cat ../version)\" MISE_TRUSTED_CONFIG_PATHS=\"$PWD\" mise run ci",
+]

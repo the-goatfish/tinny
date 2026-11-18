@@ -1,144 +1,203 @@
-name: Build and Upload
+name: Build
+
+# Checks the commit a release of this branch would create (the branch rebased
+# onto its base, version bumped, changelog written, tagged; see
+# scripts/prepare-release.sh), cheapest checks first: each stage only runs if
+# the one before it passed. release.yml calls this same workflow to check the
+# commit it's about to push. Every step is a `mise run` task you can run
+# locally; see DEVELOPMENT.md.
 
 on:
   push:
     branches:
       - '**'
+  workflow_call:
+    inputs:
+      head-sha:
+        description: Commit to release
+        type: string
+        required: true
+      base-ref:
+        description: Branch to rebase it onto
+        type: string
+        required: true
+    outputs:
+      version:
+        description: The version the prepared commit releases (no leading v)
+        value: ${{ jobs.prepare.outputs.version }}
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push supersedes the last; a release's run is never cancelled.
+  group: build-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
-  publish-check:
-    name: Check crates.io Publish Validity
+  # Stage 0: make the commit everything else checks.
+  prepare:
+    name: Prepare release commit
     runs-on: ubuntu-latest
-    needs: [deny, semver-checks]
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - name: Dry-run publish
-        run: cargo publish --dry-run --all-features
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: 'false'
+      - id: prepare
+        env:
+          # A release (workflow_call) uses only its inputs: the PR's head and
+          # base. RELEASE_BASE_BRANCH only steers the advisory push builds.
+          HEAD_SHA: ${{ github.event_name == 'push' && github.sha || inputs.head-sha }}
+          BASE_REF: ${{ github.event_name == 'push' && (vars.RELEASE_BASE_BRANCH || github.event.repository.default_branch) || inputs.base-ref }}
+        run: |
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_REF" ]; then
+            echo "::error::No head or base to prepare"
+            exit 1
+          fi
+          mise run prepare --base "origin/$BASE_REF" --head "$HEAD_SHA" --out "$RUNNER_TEMP/prepared"
+          echo "version=$(cat "$RUNNER_TEMP/prepared/version")" >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: prepared
+          path: |
+            ${{ runner.temp }}/prepared/prepared.bundle
+            ${{ runner.temp }}/prepared/version
+            ${{ runner.temp }}/prepared/released
+            ${{ runner.temp }}/prepared/release-notes.md
+          if-no-files-found: error
+          retention-days: 7
 
+  # Stage 1: checks that need no build, then clippy.
   lint:
     name: Lint
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-
-  deny:
-    name: Dependency & License Audit (cargo-deny)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          command: check
-          arguments: --all-features
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: ${{ github.event_name == 'push' }}
+      - run: mise run lint
+        env:
+          GH_TOKEN: ${{ github.token }}  # for zizmor's online audits
 
-  semver-checks:
-    name: SemVer Compatibility (cargo-semver-checks)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - uses: obi1kenobi/cargo-semver-checks-action@v2
-
+  # Stage 2: debug builds.
   test:
     name: Tests
-    runs-on: ubuntu-latest
     needs: lint
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - run: cargo test --all-targets --all-features
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: ${{ github.event_name == 'push' }}
+      - run: mise run test
 
   docs:
     name: Docs
-    runs-on: ubuntu-latest
     needs: lint
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-rust
-      - run: cargo doc --no-deps --all-features
-        env:
-          RUSTDOCFLAGS: -D warnings
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: ${{ github.event_name == 'push' }}
+      - run: mise run docs
 
-  release:
-    name: Build (${{ matrix.target }})
+  semver:
+    name: SemVer compatibility of the bumped version
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: ${{ github.event_name == 'push' }}
+      - run: mise run semver
+
+  publish-dry-run:
+    name: crates.io publish dry-run
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache: ${{ github.event_name == 'push' }}
+      - run: mise run publish-dry-run
+
+  # Stage 3: release builds for every target, and the archives release.yml
+  # attaches to the GitHub Release.
+  package:
+    name: Package (${{ matrix.target }})
+    needs: [prepare, test, docs, semver, publish-dry-run]
     runs-on: ${{ matrix.os }}
-    needs: [test, docs, deny, semver-checks]
-    env:
-      STAGING_DIR: tinny-${{ matrix.target }}
-      ASSET_PATH: tinny-${{ matrix.target }}.tar.gz
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            use-cross: false
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            use-cross: false
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            use-cross: true
+            os: ubuntu-24.04-arm
           - target: aarch64-apple-darwin
             os: macos-latest
-            use-cross: false
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/setup-rust
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/checkout-prepared
+      - uses: $/.github/actions/setup-rust
         with:
           target: ${{ matrix.target }}
           cache-key: ${{ matrix.target }}
+          cache: ${{ github.event_name == 'push' }}
 
-      - name: Install MUSL Tools
+      - name: Install MUSL tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Install Cross
-        if: matrix.use-cross
-        run: |
-          mkdir -p ~/.cargo/bin
-          curl -L https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.cargo/bin
-          echo "~/.cargo/bin" >> $GITHUB_PATH
+      - run: mise run package "$TARGET"
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECT_VERSION: ${{ needs.prepare.outputs.version }}
 
-      - name: Run Tests
-        run: |
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross test --target ${{ matrix.target }} --all-targets --all-features
-          else
-            cargo test --target ${{ matrix.target }} --all-targets --all-features
-          fi
-
-      - name: Build Release Binary
-        run: |
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
-
-      - name: Package Release Artifact
-        shell: bash
-        run: |
-          mkdir -p "$STAGING_DIR"
-
-          # Copy binary and metadata
-          cp "target/${{ matrix.target }}/release/can" "$STAGING_DIR/"
-          cp README.md LICENSE "$STAGING_DIR/"
-
-          # Archive staging directory
-          tar -czf "$ASSET_PATH" "$STAGING_DIR"
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: tinny-${{ matrix.target }}
-          path: ${{ env.ASSET_PATH }}
+          name: package-${{ matrix.target }}
+          path: |
+            target/package/tinny-${{ matrix.target }}.tar.gz
+            target/package/tinny-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
           retention-days: 7

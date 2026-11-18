@@ -1,0 +1,35 @@
+name: Checkout prepared commit
+description: >
+  Check out the commit the build workflow's prepare job made (see
+  scripts/prepare-release.sh), with its tag, so every job checks the same
+  commit. Run actions/checkout first.
+
+outputs:
+  version:
+    description: The version the prepared commit releases (no leading v)
+    value: ${{ steps.checkout.outputs.version }}
+  released:
+    description: '"true" if prepare made a new release commit'
+    value: ${{ steps.checkout.outputs.released }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: prepared
+        # Outside the workspace, so the checkout stays clean (build.rs only
+        # reports a release version from a clean tree).
+        path: ${{ runner.temp }}/prepared
+
+    - id: checkout
+      shell: bash
+      env:
+        PREPARED: ${{ runner.temp }}/prepared
+      run: |
+        version=$(cat "$PREPARED/version")
+        git fetch --quiet --no-tags "$PREPARED/prepared.bundle" "+refs/tags/v$version:refs/tags/v$version"
+        git checkout --quiet --detach "refs/tags/v$version"
+        echo "Checked out v$version at $(git rev-parse HEAD)"
+        echo "version=$version" >>"$GITHUB_OUTPUT"
+        echo "released=$(cat "$PREPARED/released")" >>"$GITHUB_OUTPUT"
