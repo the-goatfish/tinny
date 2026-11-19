@@ -1,6 +1,6 @@
 [package]
 name = "tinny-testing"
-version = "0.0.1-pre.2"
+version = "0.0.1-pre.3"
 description = "A testing branch of the Tinny toolkit."
 edition = "2024"
 license = "MIT"
